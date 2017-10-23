@@ -1,7 +1,6 @@
 ---
 
-- name: setup swarm cluster on manager and worker nodes
-# =======================================================
+- name: setup k8s cluster on manager and worker nodes
   hosts: all
   gather_facts: true
   become: true
@@ -13,6 +12,8 @@
       fs.inotify.max_user_instances: 8192
       net.bridge.bridge-nf-call-iptables: 1
       net.bridge.bridge-nf-call-ip6tables: 1
+    pod_network_cidr: 10.200.0.0/16
+
   tasks:
     - name: install default packages
       package:
@@ -60,11 +61,37 @@
         - kubectl
         - kubelet
 
+    - name: create Docker systemd directory
+      file:
+        path: /etc/systemd/system/docker.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: 0755
+
+    - name: copy the docker.service file to docker systemd path
+      copy:
+        src: files/10-docker.conf
+        dest: /etc/systemd/system/docker.service.d/10-docker.conf
+
+    - name: systemctl daemon-reload
+      command: systemctl daemon-reload
+
     - name: ensure docker service will start on reboot
-      service: name=docker enabled=yes
+      service:
+        name: docker
+        enabled: yes
+        state: started
 
     - name: add vagrant user to docker group
       user: append=yes groups=docker name=vagrant
+
+    - name: kubelet doesn't like swap or firewall
+      shell: '{{ item }}'
+      with_items:
+        - "swapoff -a"
+        - "systemctl disable iptables-services firewalld || true"
+        - "systemctl stop iptables-services firewalld || true"
 
     - name: "other pre-launch configuration tuning: sysctl"
       sysctl:
@@ -74,4 +101,50 @@
         sysctl_set: yes        
         reload: yes
       with_dict: "{{ sysctl_items }}"
+
+    - block:
+      - name: run kubeadm init on master
+        command: kubeadm init --pod-network-cidr="{{ pod_network_cidr }}" --apiserver-advertise-address="{{ hostvars['m01']['ansible_eth1']['ipv4']['address'] }}"
+      
+      - name: get the join token
+        command: kubeadm token create --usages authentication,signing --description join_token --ttl 1h
+        register: join_token
+      
+      - name: get the CA hash
+        shell: "openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex -r | while read hash g ; do echo $hash ; done"
+        register: ca_hash
+
+      - name: set join token fact on manager
+        set_fact: join_token="{{ join_token.stdout }}"
+
+      - name: set ca hash fact on manager
+        set_fact: ca_hash="{{ ca_hash.stdout }}"
+
+      - name: setup kubectl config
+        file:
+          path: /root/.kube
+          state: directory
+          owner: root
+          group: root
+          mode: 0755
+
+      - name: symlink the admin.conf to .kube/config
+        file:
+          path: /root/.kube/config
+          state: link
+          stc: /etc/kubernetes/admin.conf
+
+      - name: add networking between nodes with flannel
+        get_url:
+          url: https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+          dest: /root/kube-flannel.yml
+
+      - name: deploy flannel
+        command: kubectl create -f /root/kube-flannel.yml
+
+      when: inventory_hostname in ['m01']  # perform tasks only on master node
+
+    - name: join worker nodes
+      command: kubeadm join --token "{{ hostvars['m01']['join_token'] }}" "{{ hostvars['m01']['ansible_eth1']['ipv4']['address'] }}:6443" --discovery-token-ca-cert-hash "sha256:{{ hostvars['m01']['ca_hash'] }}"
+      when: inventory_hostname[0] == 'w'
 
