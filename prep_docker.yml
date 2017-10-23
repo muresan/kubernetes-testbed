@@ -1,0 +1,77 @@
+---
+
+- name: setup swarm cluster on manager and worker nodes
+# =======================================================
+  hosts: all
+  gather_facts: true
+  become: true
+  vars:
+    distribution: "{{ ansible_distribution | lower }}"
+    sysctl_items:
+      vm.max_map_count: 262144
+      vm.swappiness: 1
+      fs.inotify.max_user_instances: 8192
+      net.bridge.bridge-nf-call-iptables: 1
+      net.bridge.bridge-nf-call-ip6tables: 1
+  tasks:
+    - name: install default packages
+      package:
+        name: '{{ item }}'
+        state: present
+      with_items:
+        - net-tools
+        - strace
+        - curl
+        - ethtool
+        - ebtables
+
+    - name: add docker-engine apt key
+      rpm_key:
+        key: '{{ item }}'
+        state: present
+      with_items:
+        - https://download.docker.com/linux/centos/gpg
+        - https://packages.cloud.google.com/yum/doc/yum-key.gpg
+        - https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+
+    - name: add docker-engine centos repo
+      get_url:
+        url: https://download.docker.com/linux/centos/docker-ce.repo
+        dest: /etc/yum.repos.d/docker-ce.repo
+
+    - name: add kubernetes centos repo
+      yum_repository:
+        name: kubernetes
+        description: Kubernetes YUM repository for CentOS
+        baseurl: 'https://packages.cloud.google.com/yum/repos/kubernetes-el7-$basearch'
+        enabled: yes
+        gpgcheck: yes
+        gpgkey:
+          - https://packages.cloud.google.com/yum/doc/yum-key.gpg
+          - https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+
+    - name: install the packages (docker, kubeadm)
+      package:
+        name: '{{ item }}'
+        state: present
+      with_items:
+        - docker-ce
+        - kubeadm
+        - kubectl
+        - kubelet
+
+    - name: ensure docker service will start on reboot
+      service: name=docker enabled=yes
+
+    - name: add vagrant user to docker group
+      user: append=yes groups=docker name=vagrant
+
+    - name: "other pre-launch configuration tuning: sysctl"
+      sysctl:
+        name: "{{ item.key }}"
+        state: present
+        value: "{{ item.value }}"
+        sysctl_set: yes        
+        reload: yes
+      with_dict: "{{ sysctl_items }}"
+
