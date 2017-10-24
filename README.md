@@ -11,7 +11,7 @@ If you change number of workers you will need to `vagrant destroy`
 
 - Vagrant >=1.8.6
 - Ansible >=2.0
-- Virtualbox >=5.0 or libvirt
+- Virtualbox >=5.0 or libvirt (for libvirt you need `VAGRANT_DEFAULT_PROVIDER=libvirt` in your env)
 
 ## Usage
 
@@ -23,9 +23,21 @@ You will end up with 1 manager and 1 worker:
 | ----- | ---- |
 | m01 | Master node |
 | w01 | Worker node |
+| w02 | Worker node |
+
 
 After `vagrant up` is done, you should be able to `vagrant ssh <machinename>` and issue `kubectl get node` (as root) to see the swarm nodes.
 
-
+```
+12:47 $ vagrant ssh m01
+Last login: Tue Oct 24 11:47:36 2017 from 192.168.121.1
+[vagrant@m01 ~]$ sudo su -
+[root@m01 ~]# kubectl get node
+NAME           STATUS    ROLES     AGE       VERSION
+m01.kube.com   Ready     master    37m       v1.8.1
+w01.kube.com   Ready     <none>    36m       v1.8.1
+w02.kube.com   Ready     <none>    36m       v1.8.1
+[root@m01 ~]# 
+```
 
 

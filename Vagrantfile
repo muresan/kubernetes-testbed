@@ -9,8 +9,8 @@ domain_name = "kube.com"
 default_ram = 3096
 default_cpu = 2
 
-workers = 1
 masters = 1
+workers = 2
 
 nodes = []
 
