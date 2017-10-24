@@ -132,7 +132,7 @@
         file:
           path: /root/.kube/config
           state: link
-          stc: /etc/kubernetes/admin.conf
+          src: /etc/kubernetes/admin.conf
 
       - name: add networking between nodes with flannel
         get_url:
