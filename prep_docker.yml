@@ -79,9 +79,18 @@
 
     - name: ensure docker service will start on reboot
       service:
-        name: docker
+        name: '{{ item }}'
         enabled: yes
         state: started
+      with_items:
+        - docker
+
+    - name: ensure kubelet service will be enabled at boot
+      service:
+        name: '{{ item }}'
+        enabled: yes
+      with_items:
+        - kubelet
 
     - name: add vagrant user to docker group
       user: append=yes groups=docker name=vagrant
@@ -90,8 +99,17 @@
       shell: '{{ item }}'
       with_items:
         - "swapoff -a"
-        - "systemctl disable iptables-services firewalld || true"
-        - "systemctl stop iptables-services firewalld || true"
+        - "systemctl disable iptables-services || true"
+        - "systemctl stop iptables-services || true"
+        - "systemctl disable firewalld || true"
+        - "systemctl stop firewalld || true"
+
+    - name: remove swap from fstab
+      mount:
+        path: swap
+        src: /dev/mapper/centos-swap
+        fstype: swap
+        state: absent
 
     - name: "other pre-launch configuration tuning: sysctl"
       sysctl:
