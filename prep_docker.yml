@@ -12,7 +12,7 @@
       fs.inotify.max_user_instances: 8192
       net.bridge.bridge-nf-call-iptables: 1
       net.bridge.bridge-nf-call-ip6tables: 1
-    pod_network_cidr: 10.200.0.0/16
+    pod_network_cidr: 10.244.0.0/16
 
   tasks:
     - name: install default packages
@@ -61,21 +61,9 @@
         - kubectl
         - kubelet
 
-    - name: create Docker systemd directory
-      file:
-        path: /etc/systemd/system/docker.service.d
-        state: directory
-        owner: root
-        group: root
-        mode: 0755
-
-    - name: copy the docker.service file to docker systemd path
-      copy:
-        src: files/10-docker.conf
-        dest: /etc/systemd/system/docker.service.d/10-docker.conf
-
-    - name: systemctl daemon-reload
-      command: systemctl daemon-reload
+    # this solves an issue with kube-dns not starting, also this is docker's default for 17.09+
+    - name: revert systemd back to cgroupfs for kubelet
+      command: sed -i s/cgroup-driver=systemd/cgroup-driver=cgroupfs/ /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
 
     - name: ensure docker service will start on reboot
       service:
