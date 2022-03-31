@@ -1,0 +1,5 @@
+---
+somekey: "somevalue"
+otherkey:
+  child1: "empty"
+  child2: "something"
